@@ -1,0 +1,92 @@
+name: "uptrace-template-basic"
+
+services:
+  uptrace:
+    image: 'uptrace/uptrace:2.1.0-beta'
+    restart: on-failure
+    volumes:
+      - ./uptrace.yml:/etc/uptrace/config.yml
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:80/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    environment:
+      - DEBUG=2
+      - #TODO
+    ports:
+      - '${UPTRACE_GRPC:?}:${UPTRACE_GRPC:?}'
+      - '${UPTRACE_HTTP:?}:${UPTRACE_HTTP:?}'
+    depends_on:
+      - clickhouse
+      - db
+
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml
+    environment:
+      - ${OTLP_COLLECTOR_GRPC:?}
+      - ${OTLP_COLLECTOR_HTTP:?}
+      - #TODO
+    depends_on:
+      uptrace:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8.15.35
+    restart: on-failure
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:?}
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'localhost:8123/ping']
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - ch_data:/var/lib/clickhouse
+#   ports:
+#     # web
+#     - '8123:8123'
+#     # api
+#     - '9000:9000'
+
+  postgres:
+    image: postgres:17-alpine
+    restart: on-failure
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: uptrace
+      POSTGRES_PASSWORD: uptrace
+      POSTGRES_DB: uptrace
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U uptrace -d uptrace']
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - 'pg_data3:/var/lib/postgresql/data/pgdata'
+    ports:
+      - '5432:5432'
+
+
+  redis:
+    image: redis:8.6.1-alpine
+    restart: unless-stopped
+    environment:
+      - # TODO
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+
+
+volumes:
+  ch_data:
+  prometheus_data:

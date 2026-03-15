@@ -1,0 +1,110 @@
+extensions:
+  health_check:
+  pprof:
+    endpoint: 0.0.0.0:1777
+  zpages:
+    endpoint: 0.0.0.0:55679
+  headers_setter:
+    headers:
+      - key: uptrace-dsn
+        from_context: X-OTLP-Token
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:${OTLP_COLLECTOR_GRPC}
+        include_metadata: true
+      http:
+        endpoint: 0.0.0.0:${OTLP_COLLECTOR_HTTP}
+        include_metadata: true
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu:
+      disk:
+      load:
+      filesystem:
+      memory:
+      network:
+      paging:
+  prometheus/self:
+    config:
+      scrape_configs:
+        # Self telemetry
+        - job_name: 'otelcol'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['0.0.0.0:8888']
+        # If docker metrics enabled
+        - job_name: 'docker'
+          static_configs:
+            - targets: ['host.docker.internal:9323']
+  httpcheck/self:
+    targets:
+      - endpoint: 'http://localhost:13133/health/status'
+        method: GET
+  postgresql/uptrace:
+    endpoint: postgresql:5432
+    transport: tcp
+    username: ${POSTGRESQL_USER}
+    password: ${POSTGRESQL_PASSWORD}
+    databases:
+      - ${POSTGRESQL_DATABASE}
+    tls:
+      insecure: true
+  redis/uptrace:
+    endpoint: redis:6379
+    collection_interval: 10s
+    password: ${REDIS_PASSWORD}
+
+processors:
+  resourcedetection:
+    detectors: ['system']
+  batch:
+    send_batch_size: 10000
+    timeout: 10s
+
+exporters:
+  otlp/uptrace:
+    endpoint: uptrace:${UPTRACE_GRPC}
+    tls:
+      insecure: true
+    auth:
+      authenticator: headers_setter
+  prometheusremotewrite/uptrace:
+    endpoint: http://uptrace:${UPTRACE_HTTP}/api/v1/prometheus/write
+    tls:
+      insecure: true
+    auth:
+      authenticator: headers_setter
+
+service:
+  telemetry:
+    metrics:
+      address: ':8888'
+  #   logs:
+  #     level: DEBUG
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/uptrace]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/uptrace]
+    metrics/clients:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/uptrace]
+    metrics/system-otlp:
+      receivers: [hostmetrics, postgresql/uptrace, httpcheck/self, redis/uptrace]
+      processors: [batch, resourcedetection]
+      exporters: [otlp/uptrace]
+    metrics/system-prometheus:
+      receivers: [prometheus/self]
+      processors: [batch]
+      exporters: [prometheusremotewrite/uptrace]
+
+  extensions: [health_check, pprof, zpages]
