@@ -93,9 +93,9 @@ ch_cluster:
   shards:
     - replicas:
         - addr: clickhouse:9000
-          database: ${CLICKHOUSE_DATABASE}
           user: ${CLICKHOUSE_USER}
           password: ${CLICKHOUSE_PASSWORD}
+          database: ${CLICKHOUSE_DATABASE}
 
           # Connection timeout settings
           dial_timeout: 3s              # Time to wait for connection establishment
@@ -149,7 +149,7 @@ redis_cache:
   addrs:
     1: redis:6379
 
-  username: ${REDIS_USERNAME}
+  username: ""
   password: ${REDIS_PASSWORD}
   db: 0
 
