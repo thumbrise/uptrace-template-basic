@@ -1,0 +1,26 @@
+#schema: https://taskfile.dev/schema.json
+version: '3.17'
+
+dotenv: [
+  '.env',
+]
+
+tasks:
+  c:
+    desc: docker compose и аргументы. Рабочий пример [task c -- up -d]. -- обязательно.
+    cmd: docker compose {{.CLI_ARGS}}
+
+  up:
+    desc: Запустить контейнеры
+    cmds:
+      - task down
+
+      - task c -- up -d
+
+      - docker image prune --force
+      - docker container prune --force
+
+  down:
+    desc: Удалить все контейнеры во всех окружениях
+    cmds:
+      - task c -- down
