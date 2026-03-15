@@ -3,24 +3,38 @@ name: "uptrace-template-basic"
 services:
   uptrace:
     image: 'uptrace/uptrace:2.1.0-beta'
-    restart: on-failure
+    restart: unless-stopped
     volumes:
       - ./uptrace.yml:/etc/uptrace/config.yml
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:80/health" ]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:${UPTRACE_HTTP:?}/health" ]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
     environment:
-      - DEBUG=2
-      - #TODO
+      DEBUG: 2
+      UPTRACE_SECRET: ${UPTRACE_SECRET:?}
+      UPTRACE_HTTP: ${UPTRACE_HTTP:?}
+      UPTRACE_GRPC: ${UPTRACE_GRPC:?}
+      UPTRACE_ADMIN_PASSWORD: ${UPTRACE_ADMIN_PASSWORD:?}
+      UPTRACE_ADMIN_EMAIL: ${UPTRACE_ADMIN_EMAIL:?}
+      UPTRACE_SYSTEM_PROJECT_TOKEN: ${UPTRACE_SYSTEM_PROJECT_TOKEN:?}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:?}
+      POSTGRESQL_USER: ${POSTGRESQL_USER:?}
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD:?}
+      POSTGRESQL_DATABASE: ${POSTGRESQL_DATABASE:?}
+      REDIS_USERNAME: ${REDIS_USERNAME:?}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     ports:
       - '${UPTRACE_GRPC:?}:${UPTRACE_GRPC:?}'
       - '${UPTRACE_HTTP:?}:${UPTRACE_HTTP:?}'
     depends_on:
       - clickhouse
-      - db
+      - postgresql
+      - redis
 
   otelcol:
     image: otel/opentelemetry-collector-contrib:0.123.0
@@ -28,16 +42,22 @@ services:
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml
     environment:
-      - ${OTLP_COLLECTOR_GRPC:?}
-      - ${OTLP_COLLECTOR_HTTP:?}
-      - #TODO
+      OTLP_COLLECTOR_GRPC: ${OTLP_COLLECTOR_GRPC:?}
+      OTLP_COLLECTOR_HTTP: ${OTLP_COLLECTOR_HTTP:?}
+      POSTGRESQL_USER: ${POSTGRESQL_USER:?}
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD:?}
+      POSTGRESQL_DATABASE: ${POSTGRESQL_DATABASE:?}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      UPTRACE_HTTP: ${UPTRACE_HTTP:?}
+      UPTRACE_GRPC: ${UPTRACE_GRPC:?}
+      UPTRACE_SYSTEM_PROJECT_TOKEN: ${UPTRACE_SYSTEM_PROJECT_TOKEN:?}
     depends_on:
       uptrace:
         condition: service_healthy
 
   clickhouse:
     image: clickhouse/clickhouse-server:25.8.15.35
-    restart: on-failure
+    restart: unless-stopped
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:?}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
@@ -48,39 +68,30 @@ services:
       timeout: 1s
       retries: 30
     volumes:
-      - ch_data:/var/lib/clickhouse
-#   ports:
-#     # web
-#     - '8123:8123'
-#     # api
-#     - '9000:9000'
+      - clickhouse_data:/var/lib/clickhouse
 
-  postgres:
-    image: postgres:17-alpine
-    restart: on-failure
+  postgresql:
+    image: postgres:17.9-alpine
+    restart: unless-stopped
     environment:
       PGDATA: /var/lib/postgresql/data/pgdata
-      POSTGRES_USER: uptrace
-      POSTGRES_PASSWORD: uptrace
-      POSTGRES_DB: uptrace
+      POSTGRES_USER: ${POSTGRESQL_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRESQL_DATABASE:?}
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U uptrace -d uptrace']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRESQL_USER:?} -d ${POSTGRESQL_DATABASE:?}']
       interval: 1s
       timeout: 1s
       retries: 30
     volumes:
-      - 'pg_data3:/var/lib/postgresql/data/pgdata'
-    ports:
-      - '5432:5432'
+      - 'postgresql_data:/var/lib/postgresql/data/pgdata'
 
 
   redis:
     image: redis:8.6.1-alpine
     restart: unless-stopped
-    environment:
-      - # TODO
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -88,5 +99,6 @@ services:
 
 
 volumes:
-  ch_data:
+  clickhouse_data:
   prometheus_data:
+  postgresql_data:
