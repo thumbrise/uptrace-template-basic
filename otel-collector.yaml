@@ -1,14 +1,10 @@
+#schema: https://raw.githubusercontent.com/srikanthccv/otelcol-jsonschema/refs/heads/main/schema.json
 extensions:
   headers_setter/clients:
     headers:
-      - action: insert
-        key: uptrace-dsn
-        from_context: X-OTLP-Token
-  headers_setter/system:
-    headers:
       - action: upsert
         key: uptrace-dsn
-        value: http://${UPTRACE_SYSTEM_PROJECT_TOKEN}@uptrace:${UPTRACE_HTTP}?grpc=${UPTRACE_GRPC}
+        from_context: uptrace-dsn
   health_check:
   pprof:
     endpoint: 0.0.0.0:1777
@@ -41,11 +37,11 @@ receivers:
         - job_name: 'otelcol'
           scrape_interval: 10s
           static_configs:
-            - targets: ['0.0.0.0:8888']
+            - targets: [ '0.0.0.0:8888' ]
         # If docker metrics enabled
         - job_name: 'docker'
           static_configs:
-            - targets: ['host.docker.internal:9323']
+            - targets: [ 'host.docker.internal:9323' ]
   httpcheck/self:
     targets:
       - endpoint: 'http://localhost:13133/health/status'
@@ -66,10 +62,15 @@ receivers:
 
 processors:
   resourcedetection:
-    detectors: ['system']
-  batch:
+    detectors: [ 'system' ]
+  batch/system:
     send_batch_size: 10000
     timeout: 10s
+  batch/clients:
+    send_batch_size: 10000
+    timeout: 10s
+    metadata_keys:
+      - uptrace-dsn
 
 exporters:
   otlp/clients:
@@ -82,41 +83,43 @@ exporters:
     endpoint: uptrace:${UPTRACE_GRPC}
     tls:
       insecure: true
-    auth:
-      authenticator: headers_setter/system
+    headers:
+      uptrace-dsn: http://${UPTRACE_SYSTEM_PROJECT_TOKEN}@uptrace:${UPTRACE_HTTP}?grpc=${UPTRACE_GRPC}
+
   prometheusremotewrite/system:
     endpoint: http://uptrace:${UPTRACE_HTTP}/api/v1/prometheus/write
     tls:
       insecure: true
-    auth:
-      authenticator: headers_setter/system
+    headers:
+      uptrace-dsn: http://${UPTRACE_SYSTEM_PROJECT_TOKEN}@uptrace:${UPTRACE_HTTP}?grpc=${UPTRACE_GRPC}
+
 
 service:
   telemetry:
     metrics:
       address: ':8888'
-  #   logs:
-  #     level: DEBUG
+    logs:
+      level: DEBUG
   pipelines:
     traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/clients]
+      receivers: [ otlp ]
+      processors: [ batch/clients ]
+      exporters: [ otlp/clients ]
     logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/clients]
+      receivers: [ otlp ]
+      processors: [ batch/clients ]
+      exporters: [ otlp/clients ]
     metrics/clients:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/clients]
+      receivers: [ otlp ]
+      processors: [ batch/clients ]
+      exporters: [ otlp/clients ]
     metrics/system-otlp:
-      receivers: [hostmetrics, postgresql/uptrace, httpcheck/self, redis/uptrace]
-      processors: [batch, resourcedetection]
-      exporters: [otlp/system]
+      receivers: [ hostmetrics, postgresql/uptrace, httpcheck/self, redis/uptrace ]
+      processors: [ batch/system, resourcedetection ]
+      exporters: [ otlp/system ]
     metrics/system-prometheus:
       receivers: [prometheus/self]
-      processors: [batch]
+      processors: [batch/system]
       exporters: [prometheusremotewrite/system]
 
-  extensions: [headers_setter/clients, headers_setter/system, health_check, pprof, zpages]
+  extensions: [ health_check, pprof, zpages, headers_setter/clients ]

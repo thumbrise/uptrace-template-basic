@@ -51,6 +51,9 @@ services:
       UPTRACE_HTTP: ${UPTRACE_HTTP:?}
       UPTRACE_GRPC: ${UPTRACE_GRPC:?}
       UPTRACE_SYSTEM_PROJECT_TOKEN: ${UPTRACE_SYSTEM_PROJECT_TOKEN:?}
+    ports:
+      - '${OTLP_COLLECTOR_GRPC:?}:${OTLP_COLLECTOR_GRPC:?}'
+      - '${OTLP_COLLECTOR_HTTP:?}:${OTLP_COLLECTOR_HTTP:?}'
     depends_on:
       uptrace:
         condition: service_healthy
